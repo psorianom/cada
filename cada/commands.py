@@ -11,6 +11,7 @@ import re
 from glob import iglob
 from os.path import exists
 
+import requests
 from webassets.script import CommandLineEnvironment
 from flask.cli import FlaskGroup, shell_command, run_command, routes_command
 
@@ -301,6 +302,32 @@ def fix(csvfile):
             echo('{0}: Replace {1} with {2}'.format(white(id), white(source), white(dest)))
             advice.subject = advice.subject.replace(source, dest)
             advice.content = advice.content.replace(source, dest)
+        advice.save()
+        index(advice)
+    for id in bads:
+        echo('{0}: Replacements length not matching', white(id))
+    success('Done')
+
+@cli.command()
+@click.argument('csvfile', default='fix.csv', type=click.File('r'))
+def fix_rest(csvfile):
+    '''Apply a fix (ie. remove plain names)'''
+    header('Apply fixes from {}', csvfile.name)
+    bads = []
+    reader = csv.reader(csvfile)
+    reader.next()  # Skip header
+    for id, _, sources, dests in reader:
+        advice = Advice.objects.get(id=id)
+        TAG_REST_API_URL = "http://localhost:5001/tag"
+
+        # load the input text and construct the payload for the request
+        payload_subject = {"text": advice.subject}
+        payload_content = {"text": advice.content}
+        # submit the request
+        r = requests.post(TAG_REST_API_URL, data={"tag": "PER,AUX"}, files=payload_subject).json()
+        advice.subject = r["pseudonim_text"]
+        r = requests.post(TAG_REST_API_URL, data={"tag": "PER,AUX"}, files=payload_content).json()
+        advice.content = r["pseudonim_text"]
         advice.save()
         index(advice)
     for id in bads:
